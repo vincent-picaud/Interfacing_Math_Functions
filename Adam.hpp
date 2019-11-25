@@ -22,9 +22,6 @@ namespace Optimize
   static constexpr auto _Adam_alpha_schedule_ = typename Adam_Alpha_Schedule::argument_syntactic_sugar();
   static constexpr auto Adam_alpha_constant_schedule = [](const double alpha) { return [alpha](const size_t) -> double { return alpha; }; };
 
-  using Adam_Alpha = OptionalArgument::Named_Assert_Type<struct Adam_Alpha_Tag, Assert_Positive<double>, double>;
-  static constexpr auto Adam_alpha = typename Adam_Alpha::argument_syntactic_sugar();
-
   using Adam_Beta_1 = OptionalArgument::Named_Assert_Type<struct Adam_Beta_1_Tag, Assert_In_01_Strict<double>, double>;
   static constexpr auto _Adam_beta_1_ = typename Adam_Beta_1::argument_syntactic_sugar();
 

@@ -33,7 +33,7 @@ main()
   std::valarray<double> x(2, 2);
 
   f.initialize_counter();
-
+ 
   bool has_converged = Adam_optimize(
       f,
       x,
