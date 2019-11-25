@@ -19,8 +19,8 @@ Rosenbrock(const std::valarray<double>& x,
 
   if (df)
   {
-    (*df)[0] =
-        2 * (-1 + x[0] + 2 * c * x[0] * x[0] * x[0] - 2 * c * x[0] * x[1]);
+    (*df)[0] = 2 * (-1 + x[0] + 2 * c * x[0] * x[0] * x[0] -
+                    2 * c * x[0] * x[1]);
     (*df)[1] = 2 * c * (x[1] - x[0] * x[0]);
   }
 }
@@ -33,7 +33,7 @@ main()
   std::valarray<double> x(2, 2);
 
   f.initialize_counter();
- 
+
   bool has_converged = Adam_optimize(
       f,
       x,
@@ -43,12 +43,12 @@ main()
       _Adam_alpha_schedule_ = [](const size_t t) -> double {
         return 1 / sqrt(t);
       },
-
       _absolute_epsilon_ = 0.01,
       _verbose_          = true);
 
-  std::cerr << "has converged: " << std::boolalpha << has_converged
-            << std::endl;
+  std::cerr << "has converged: " << std::boolalpha
+            << has_converged << std::endl;
   std::cerr << "f counter:  " << f.f_counter() << std::endl;
-  std::cerr << "df counter: " << f.df_counter() << std::endl;
+  std::cerr << "df counter: " << f.df_counter()
+            << std::endl;
 }

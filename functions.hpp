@@ -84,6 +84,18 @@ namespace Optimize
       };
       _pimpl = std::make_shared<Impl>(std::forward<F>(f));
     }
+    // codomain_type foo(const domain_type& x, extra_args... )
+    template <typename... EXTRA_ARGS>
+    Function(CODOMAIN_TYPE(f)(const DOMAIN_TYPE&,
+                              EXTRA_ARGS...),
+             const Identity_t<EXTRA_ARGS>&... args)
+        : Function{
+              [=](const DOMAIN_TYPE& x, CODOMAIN_TYPE& y) {
+                y = f(x, args...);
+              }}
+    {
+    }
+
     // void foo(const domain_type& x,codomain_type& y, extra_args... )
     template <typename... EXTRA_ARGS>
     Function(void(f)(const DOMAIN_TYPE&,
