@@ -40,13 +40,12 @@ namespace Optimize
     }
 
     // lambda(domain)->codomain
-    template <typename F>
-    Function(
-        F&& f,
-        const std::enable_if_t<
-            std::is_invocable_r_v<CODOMAIN_TYPE,
-                                  std::decay_t<F>,
-                                  DOMAIN_TYPE>>* = nullptr)
+    template <typename F,
+              std::enable_if_t<std::is_invocable_r_v<
+                  CODOMAIN_TYPE,
+                  std::decay_t<F>,
+                  DOMAIN_TYPE>>* = nullptr>
+    Function(F&& f)
     {
       struct Impl final : public Interface
       {
@@ -63,14 +62,13 @@ namespace Optimize
       _pimpl = std::make_shared<Impl>(std::forward<F>(f));
     }
     // lambda(domain,codomain&)
-    template <typename F>
-    Function(F&& f,
-             const std::enable_if_t<
-                 std::is_invocable_r_v<void,
-                                       std::decay_t<F>,
-                                       DOMAIN_TYPE,
-                                       CODOMAIN_TYPE&>>* =
-                 nullptr)
+    template <typename F,
+              std::enable_if_t<std::is_invocable_r_v<
+                  void,
+                  std::decay_t<F>,
+                  DOMAIN_TYPE,
+                  CODOMAIN_TYPE&>>* = nullptr>
+    Function(F&& f)
     {
       struct Impl final : public Interface
       {
@@ -182,16 +180,14 @@ namespace Optimize
     {
     }
     // lambda(domain,codomain*,differential*)
-    template <typename F>
-    Differentiable_Function(
-        F&& f,
-        const std::enable_if_t<
-            std::is_invocable_r_v<void,
-                                  std::decay_t<F>,
-                                  DOMAIN_TYPE,
-                                  CODOMAIN_TYPE*,
-                                  DIFFERENTIAL_TYPE*>>* =
-            nullptr)
+    template <typename F,
+              std::enable_if_t<std::is_invocable_r_v<
+                  void,
+                  std::decay_t<F>,
+                  DOMAIN_TYPE,
+                  CODOMAIN_TYPE*,
+                  DIFFERENTIAL_TYPE*>>* = nullptr>
+    Differentiable_Function(F&& f)
     {
       struct Impl final : public Diff_Interface
       {
