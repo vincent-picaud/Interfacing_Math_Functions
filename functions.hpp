@@ -134,7 +134,9 @@ namespace Optimize
   // Helper
   //
   template <typename DOMAIN_TYPE, typename CODOMAIN_TYPE>
-  CODOMAIN_TYPE
+  std::enable_if_t<
+      std::is_default_constructible_v<CODOMAIN_TYPE>,
+      CODOMAIN_TYPE>
   eval_f(const Function<DOMAIN_TYPE, CODOMAIN_TYPE>& func,
          const Identity_t<DOMAIN_TYPE>& x)
   {
@@ -308,7 +310,9 @@ namespace Optimize
   template <typename DOMAIN_TYPE,
             typename CODOMAIN_TYPE,
             typename DIFFERENTIAL_TYPE>
-  CODOMAIN_TYPE
+  std::enable_if_t<
+      std::is_default_constructible_v<CODOMAIN_TYPE>,
+      CODOMAIN_TYPE>
   eval_f(const Differentiable_Function<DOMAIN_TYPE,
                                        CODOMAIN_TYPE,
                                        DIFFERENTIAL_TYPE>&
@@ -319,5 +323,4 @@ namespace Optimize
     func.f(x, y);
     return y;
   }
-
-}  
+}
