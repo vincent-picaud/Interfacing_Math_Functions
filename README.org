@@ -1,0 +1,949 @@
+#+BLOG: wordpress
+#+POSTID: 899
+#+DATE: [2019-11-22 Fri 09:05]
+#+TITLE: Interfacing Math Functions in C++17
+#+TAGS: Cpp,Computations
+
+This post describes the way I currently wrap math functions. This is
+a building block used to interface solvers or mathematical
+programming procedures.
+
+I assume that the functions to be computed are enough complex to make
+memory allocation and virtual method call penalties negligible.
+
+Also I do not want to manipulate directly (smart) pointers and have a
+*value* semantic. That is the reason why I use the [[https://sean-parent.stlab.cc/papers-and-presentations/#better-code-runtime-polymorphism][runtime-polymorphism]]
+approach promoted by [[https://sean-parent.stlab.cc/][Sean Parent]].
+
+A demo code is available in this [[https://github.com/vincent-picaud/Interfacing_Math_Functions][GitHub repository]].
+
+* Function 
+
+The goal is to wrap the notion of math functions $f:X\to Y$. $X$ is the
+domain, $Y$ the codomain. The code is as follows:
+
+#+HEADER: :noweb-ref whole_code
+#+BEGIN_SRC cpp :eval never
+template <typename DOMAIN_TYPE, typename CODOMAIN_TYPE>
+class Function
+{
+ public:
+  using domain_type   = DOMAIN_TYPE;
+  using codomain_type = CODOMAIN_TYPE;
+
+  struct Interface
+  {
+    virtual void f(const domain_type& x,
+                   codomain_type& f) const = 0;
+
+    virtual ~Interface() = default;
+  };
+
+ protected:
+  using pimpl_type = std::shared_ptr<const Interface>;
+  pimpl_type _pimpl;
+  std::shared_ptr<size_t> _f_counter;
+
+ public:
+  Function() : _pimpl{} {}
+  Function(pimpl_type&& pimpl,
+           std::shared_ptr<size_t> f_counter = {})
+      : _pimpl{std::move(pimpl)}, _f_counter{f_counter}
+  {
+  }
+
+  // lambda(domain)->codomain
+  template <typename F,
+            std::enable_if_t<std::is_invocable_r_v<
+                CODOMAIN_TYPE,
+                std::decay_t<F>,
+                DOMAIN_TYPE>>* = nullptr>
+  Function(F&& f)
+  {
+    struct Impl final : public Interface
+    {
+      std::decay_t<F> _f;
+
+      Impl(F&& f) : _f(std::forward<F>(f)) {}
+
+      void
+      f(const DOMAIN_TYPE& x, CODOMAIN_TYPE& y) const
+      {
+        y = _f(x);
+      }
+    };
+    _pimpl = std::make_shared<Impl>(std::forward<F>(f));
+  }
+  // lambda(domain,codomain&)
+  template <typename F,
+            std::enable_if_t<std::is_invocable_r_v<
+                void,
+                std::decay_t<F>,
+                DOMAIN_TYPE,
+                CODOMAIN_TYPE&>>* = nullptr>
+  Function(F&& f)
+  {
+    struct Impl final : public Interface
+    {
+      std::decay_t<F> _f;
+
+      Impl(F&& f) : _f(std::forward<F>(f)) {}
+
+      void
+      f(const DOMAIN_TYPE& x, CODOMAIN_TYPE& y) const
+      {
+        _f(x, y);
+      }
+    };
+    _pimpl = std::make_shared<Impl>(std::forward<F>(f));
+  }
+  // codomain_type foo(const domain_type& x, extra_args... )
+  template <typename... EXTRA_ARGS>
+  Function(CODOMAIN_TYPE(f)(const DOMAIN_TYPE&,
+                            EXTRA_ARGS...),
+           const Identity_t<EXTRA_ARGS>&... args)
+      : Function{
+            [=](const DOMAIN_TYPE& x, CODOMAIN_TYPE& y) {
+              y = f(x, args...);
+            }}
+  {
+  }
+  // void foo(const domain_type& x,codomain_type& y, extra_args... )
+  template <typename... EXTRA_ARGS>
+  Function(void(f)(const DOMAIN_TYPE&,
+                   CODOMAIN_TYPE&,
+                   EXTRA_ARGS...),
+           const Identity_t<EXTRA_ARGS>&... args)
+      : Function{
+            [=](const DOMAIN_TYPE& x, CODOMAIN_TYPE& y) {
+              f(x, y, args...);
+            }}
+  {
+  }
+
+  void
+  f(const domain_type& x, codomain_type& y) const
+  {
+    if (_f_counter) ++(*_f_counter);
+
+    (*_pimpl).f(x, y);
+  }
+
+  codomain_type
+  operator()(const domain_type& x) const
+  {
+    codomain_type y;
+    f(x, y);
+    return y;
+  };
+
+  void
+  initialize_counter()
+  {
+    _f_counter = std::make_shared<size_t>(0);
+  }
+
+  size_t
+  f_counter() const
+  {
+    assert(_f_counter);
+    return *_f_counter;
+  }
+};
+#+END_SRC
+
+** "Runtime-polymorphism"
+
+This part 
+ #+begin_src cpp :eval never
+{
+  ...
+  
+  struct Interface
+  {
+    virtual void f(const domain_type& x,
+                   codomain_type&     f) const = 0;
+
+    virtual ~Interface() = default;
+  };
+
+ protected:
+  using pimpl_type = std::shared_ptr<const Interface>;
+  pimpl_type _pimpl;
+
+  ...
+}
+ #+end_src
+
+is directly related to Sean Parent's approach, please read
+[[https://sean-parent.stlab.cc/papers-and-presentations/#better-code-runtime-polymorphism][runtime-polymorphism]]
+
+** Evaluation counter
+
+This part
+ #+begin_src cpp :eval never
+std::shared_ptr<size_t> _f_counter;
+
+void initialize_counter()
+{
+  _f_counter = std::make_shared<size_t>(0);
+}
+
+size_t f_counter() const
+{
+  assert(_f_counter);
+  return *_f_counter;
+}
+ #+end_src
+
+is simply a convenience counter used to track how many times the
+function is evaluated:
+ #+begin_src cpp :eval never
+void f(const domain_type& x, codomain_type& y) const
+{
+  if (_f_counter)
+    ++(*_f_counter);
+
+  (*_pimpl).f(x, y);
+}
+ #+end_src
+As we have a *value* semantic (=Function= objects can be copied) we
+have to use a shared counter. 
+
+*Note:* this counter is by no way mandatory. You can remove it from the
+implementation if you want. However it is quite handy when one wants
+to compare algorithm performance in term of number of function calls.
+
+** Construction from a lambda
+
+#+begin_src cpp :eval never
+template <typename F,
+          std::enable_if_t<std::is_invocable_r_v<
+              void, std::decay_t<F>, DOMAIN_TYPE,
+              CODOMAIN_TYPE&>>* = nullptr>
+Function(F&& f)
+{
+  struct Impl final : public Interface
+  {
+    std::decay_t<F> _f;
+
+    Impl(F&& f) : _f(std::forward<F>(f))
+    {
+    }
+
+    void f(const DOMAIN_TYPE& x, CODOMAIN_TYPE& y) const
+    {
+      _f(x, y);
+    }
+  };
+  _pimpl = std::make_shared<Impl>(std::forward<F>(f));
+}
+#+end_src
+
+This constructor will allow use to use a lambda to construct a
+=Function= object, by example:
+
+#+begin_src cpp :eval never
+Function<std::vector<double>, double> func{
+    [](const std::vector<double>& v, double& sum_v) {
+      sum_v = std::accumulate(v.begin(), v.end(), 0);
+    }};
+#+end_src
+
+The use of SFINAE
+#+begin_src cpp :eval never
+std::enable_if_t<std::is_invocable_r_v<
+    void, std::decay_t<F>, DOMAIN_TYPE, CODOMAIN_TYPE&>>* =
+    nullptr
+#+end_src
+allows use to filter the =F= argument in order to define other
+specializations, by example:
+#+begin_src cpp :eval never
+Function<std::vector<double>, double> func{
+    [](const std::vector<double>& v) {
+      return std::accumulate(v.begin(), v.end(), 0);
+    }};
+#+end_src
+
+This constructor role is to *move* the =F f= object into a *dynamically*
+created =Interface= instance =Impl=. Then it stores it into the =_pimpl=
+shared pointer.
+
+We just have to take care of not forgetting any required =decay_t= and
+=std::forward=.
+
+The next constructor
+
+#+begin_src cpp :eval never
+template <typename... EXTRA_ARGS>
+Function(CODOMAIN_TYPE(f)(const DOMAIN_TYPE&,
+                          EXTRA_ARGS...),
+         const Identity_t<EXTRA_ARGS>&... args)
+    : Function{[=](const DOMAIN_TYPE& x, CODOMAIN_TYPE& y) {
+      y = f(x, args...);
+    }}
+{
+}
+#+end_src
+
+is more interesting.
+
+First, in some cases the c++17 [[https://en.cppreference.com/w/cpp/language/class_template_argument_deduction][class template argument deduction]] can
+be used:
+
+#+begin_src cpp :eval never
+double Rosenbrock(const std::vector<double>& x, double c)
+{
+  assert(x.size() == 2);
+
+  return (1 - x[0]) * (1 - x[0]) +
+         c * (x[1] - x[0] * x[0]) * (x[1] - x[0] * x[0]);
+}
+
+// ...
+
+Function f(Rosenbrock, 100);  // here c=100
+#+end_src
+
+Second, it uses the =Identity_t= trick. Without it, this line 
+
+#+begin_src cpp :eval never
+Function f(Rosenbrock, 100);
+#+end_src
+
+would *not* compile. You would be *forced* to write:
+
+#+begin_src cpp :eval never
+Function f(Rosenbrock, 100.); // <- the 100. signs "double" type
+#+end_src
+
+=Identity_t= is defined as follows 
+
+#+begin_src cpp :eval never
+template <typename T>
+struct Identity
+{
+  using type = T;
+};
+template <typename T>
+using Identity_t = typename Identity<T>::type;
+#+end_src
+
+In the line 
+#+begin_src cpp :eval never
+template <typename... EXTRA_ARGS>
+Function(CODOMAIN_TYPE(f)(const DOMAIN_TYPE&,
+                          EXTRA_ARGS...),
+         const Identity_t<EXTRA_ARGS>&... args)
+#+end_src
+its role is to prevent =args...= to participate in the template argument
+deduction. If this is not done the compiler has a contradictory
+information: in one side 100 is a =double= as defined by the =double c=
+type of =Rosenbrock(const std::vector<double>& x, double c)= but on the
+other side it is an =int= as define by the 100 of the =Function
+f(Rosenbrock, 100);= expression. When =Identity_t= is used, the compiler
+makes its decision only using the =Rosenbrock= function prototype .
+
+A more pedagogical explanation can be found [[https://humanreadablemag.com/issues/0/articles/how-to-avoid-template-type-deduction-in-c/][here]]. You can also read
+cppreference [[https://en.cppreference.com/w/cpp/types/type_identity][C++20 std::type_identity]].
+
+** Function evaluation
+
+Here is maybe the most controversial part and certainly the point
+where I have hesitated the most.
+
+To invoke function evaluation at a
+point $x$ we have two main possibilities:
+
+#+begin_src cpp :eval never
+void f(const domain_type& x, codomain_type& y) const; // (1)
+codomain_type operator()(const domain_type& x) const; // (2)
+#+end_src
+
+With the first method, we have:
+
+#+begin_src cpp :eval never
+Function func;
+// ...
+func.f(x,y);
+#+end_src
+
+With the second method, we have:
+
+#+begin_src cpp :eval never
+Function func;
+// ...
+y=func(x);
+#+end_src
+
+I do not want to support the two approaches (-> such kind of no-choice
+is often a bad design decision as you have to support two (possibly
+incompatible) paradigms).
+
+The latest case has a more familiar syntax, however the former case
+has some other advantages. It transfers the responsibility/task of =Y=
+object creation to the caller and it does not impose you useless
+copies.
+
+Let's give an example. This example is a little far-fetched, but it
+gives some illustrations. Imagine a non-copyiable, non-movable class
+=Y=, then you cannot define your function using (2):
+
+#+begin_src cpp :eval never
+struct Y
+{
+  Y()         = default;
+  Y(const Y&) = delete;
+  Y(Y&&)      = delete;
+
+  void
+  set_value(double x)
+  {
+    data[10] = x;
+  };
+
+  std::array<double, 100> data
+};
+
+Y one_function(const double x)  // compile-time error:
+{                               // use of deleted function
+  Y y;                          // ‘Y::Y(Y&&)’
+
+  y.set_value(x);
+
+  return y;
+}
+#+end_src
+Even if it was possible you would have to *copy* the 100-double array at
+each call (because of the =set_value= method I don't even think we can save
+the baby with [[https://en.cppreference.com/w/cpp/language/copy_elision][copy elision]]).
+
+The approach using (1) does not suffer from these drawbacks:
+#+begin_src cpp :eval never
+void one_function(const double x, Y& y) 
+{                              
+  y.set_value(x);
+}
+#+end_src
+compiles without problem and does not require useless copy.
+
+By conclusion our interface for computing function values will be:
+#+begin_src cpp :eval never
+void
+f(const domain_type& x, codomain_type& y) const
+{
+  if (_f_counter) ++(*_f_counter);
+
+  (*_pimpl).f(x, y);
+}
+#+end_src
+
+* Differentiable Function
+
+The =Differentiable_Function= follows exactly the same scheme (see Annex
+at the end of this post). It defines 3 main methods:
+- =f(const Domain& x, Codomain& y)=
+- =df(const Domain& x, Differential& df)=
+- =f_df(const Domain& x, Codomain& y, Differential& df)=
+and add a =df= evaluation counter.
+
+When wrapping a function 
+#+begin_src cpp :eval never
+void
+Rosenbrock(const std::valarray<double>& x,
+           double* f,
+           std::valarray<double>* df,
+           double c)
+{
+  assert(x.size() == 2);
+  assert(df == nullptr or df->size() == 2);
+
+  if (f)
+  {
+    ,*f = (1 - x[0]) * (1 - x[0]) +
+         c * (x[1] - x[0] * x[0]) * (x[1] - x[0] * x[0]);
+  }
+
+  if (df)
+  {
+    (*df)[0] = 2 * (-1 + x[0] + 2 * c * x[0] * x[0] * x[0] -
+                    2 * c * x[0] * x[1]);
+    (*df)[1] = 2 * c * (x[1] - x[0] * x[0]);
+  }
+}
+
+// ...
+
+Differentiable_Function wrapped(Rosenbrock,
+                                10);  // here c=10
+
+std::valarray<double> x(2, 2);
+std::valarray<double> df(2, 2);
+double y;
+wrapped.f_df(x, y, df);
+#+end_src
+
+we use the following convention:
+- if =f= (of =double *f=) = =nullptr= do not compute f value
+- if =df= (of =std::valarray<double> *df=) = =nullptr= do not compute df value
+
+** Convert a differentiable function into a function
+One can transform a =Differentiable_Function= object into a =Function=
+object, thank to the conversion operator:
+
+#+begin_src cpp :eval never
+operator Function<DOMAIN_TYPE, CODOMAIN_TYPE>() const
+{
+  return {_pimpl, _f_counter};
+}
+#+end_src
+
+During the conversion only a shallow copy is performed (thanks to the
+use of the =_pimp= shared pointer). The =f_counter= is also shared to
+track function evaluations performed from created =Function= instance.
+
+The user can also explicitly perform the conversion thanks to the
+=as_function()= method:
+
+#+begin_src cpp :eval never
+Function<DOMAIN_TYPE, CODOMAIN_TYPE>
+as_function() const
+{
+  return static_cast<Function<DOMAIN_TYPE, CODOMAIN_TYPE>>(*this);
+}
+#+end_src
+
+This is a convenience method that, compared to a regular =static_cast=,
+avoids to explicitly define types:
+#+begin_src cpp :eval never
+auto f = differentiable_g.as_function();
+// versus
+auto f = static_cast<Function<DOMAIN_TYPE, 
+			      CODOMAIN_TYPE>>(differentiable_g);
+#+end_src
+** Differential versus gradient
+In maths the gradient of a scalar function is the $\nabla f(x)$ vector
+defined by: $$ df(x)[h]=\langle \nabla f(x), h \rangle $$ where
+$df(x)[.]$ is the differential (= a linear continuous application).
+
+In C++ to make this distinction *explicit* we would had had to define 2
+different types. This is an overkill effort. The compromise is to
+interpret the result of =f_df(...)= or =df(...)= call as a differential or
+a gradient according to the context. This context is generally clear:
+multidimensional nonlinear solvers (Newton, GMRES in its nonlinear
+version...) use differentials, Optimization procedures that minimize a
+scalar function use gradient vectors.
+
+* Basic usage examples
+
+The code is available in the [[https://github.com/vincent-picaud/Interfacing_Math_Functions][GitHub repository]].
+
+** Root solvers
+
+We solve 
+$$
+x^2-c = 0
+$$
+using two classical iterative methods:
+- [[https://en.wikipedia.org/wiki/Newton%2527s_method][Newton's method]], requires a differentiable function 
+- [[https://en.wikipedia.org/wiki/Steffensen%2527s_method][Steffensen's method]], that only requires function values (and not its
+  differential values)
+
+#+begin_src cpp :eval never 
+#include "functions.hpp"
+
+#include <iomanip>
+#include <iostream>
+
+template <typename T>
+void
+square_root(const T& x, T* f, T* df, T c)
+{
+  if (f)
+  {
+    (*f) = x * x - c;
+  }
+  if (df)
+  {
+    (*df) = 2 * x;
+  }
+}
+
+template <typename T>
+void
+show_iteration(size_t iter, T x, T f)
+{
+  constexpr auto max_digits =
+      std::numeric_limits<T>::max_digits10;
+
+  std::cerr << std::setw(4) << iter
+            << " x = " << std::setw(max_digits + 5)
+            << std::setprecision(max_digits) << x
+            << " f = " << std::setw(max_digits + 5)
+            << std::setprecision(max_digits) << f
+            << std::endl;
+}
+
+template <typename T>
+bool
+Newton(const Differentiable_Function<T, T, T>& f_obj,
+       T& x,
+       double epsilon  = 1e-10,
+       size_t max_iter = 20)
+{
+  T f, df; // assumed to be default constructible
+
+  bool has_converged = false;
+
+  for (size_t iter = 1; iter <= max_iter; ++iter)
+  {
+    f_obj.f_df(x, f, df);
+
+    auto delta_x = -f / df;
+
+    has_converged = std::abs(delta_x) < epsilon;
+
+    x = x + delta_x;
+
+    show_iteration(iter, x, f);
+
+    if (has_converged) break;
+  }
+  return has_converged;
+}
+
+template <typename T>
+bool
+Steffensen(const Function<T, T>& f_obj,
+           T& x,
+           double epsilon  = 1e-10,
+           size_t max_iter = 20)
+{
+  T f, g; // assumed to be default constructible
+
+  bool has_converged = false;
+
+  for (size_t iter = 1; iter <= max_iter; ++iter)
+  {
+    f_obj.f(x, f);
+    f_obj.f(x + f, g);
+
+    auto delta_x = -f * f / (g - f);
+
+    has_converged = std::abs(delta_x) < epsilon;
+
+    x = x + delta_x;
+
+    show_iteration(iter, x, f);
+
+    if (has_converged) break;
+  }
+  return has_converged;
+}
+
+int
+main()
+{
+  Differentiable_Function f(square_root<double>, 2);
+  bool has_converged;
+  const double x_init = 2;
+  double x;
+
+  ////////////////
+
+  std::cerr << std::endl << "Newton" << std::endl;
+  f.initialize_counter();
+  x = x_init;
+
+  has_converged = Newton(f, x);
+
+  std::cerr << "has converged: " << std::boolalpha
+            << has_converged << std::endl;
+  std::cerr << "f counter:  " << f.f_counter() << std::endl;
+  std::cerr << "df counter: " << f.df_counter()
+            << std::endl;
+
+  ////////////////
+
+  std::cerr << std::endl << "Steffensen" << std::endl;
+  f.initialize_counter();
+  x = x_init;
+
+  has_converged = Steffensen(f.as_function(), x);
+
+  std::cerr << "has converged: " << std::boolalpha
+            << has_converged << std::endl;
+  std::cerr << "f counter:  " << f.f_counter() << std::endl;
+  std::cerr << "df counter: " << f.df_counter()
+            << std::endl;
+}
+#+end_src
+
+prints:
+
+#+begin_example
+
+Newton
+   1 x =                    1.5 f =                      2
+   2 x =     1.4166666666666667 f =                   0.25
+   3 x =     1.4142156862745099 f =  0.0069444444444446418
+   4 x =     1.4142135623746899 f = 6.0073048828712672e-06
+   5 x =     1.4142135623730951 f =  4.510614104447086e-12
+has converged: true
+f counter:  5
+df counter: 5
+
+Steffensen
+   1 x =     1.6666666666666667 f =                      2
+   2 x =     1.4774774774774775 f =    0.77777777777777812
+   3 x =     1.4191773378054482 f =    0.18293969645320995
+   4 x =      1.414246675030719 f =   0.014064316140559363
+   5 x =     1.4142135638571252 f = 9.3657835444016513e-05
+   6 x =     1.4142135623730951 f = 4.1974708153702522e-09
+   7 x =     1.4142135623730949 f = 4.4408920985006262e-16
+has converged: true
+f counter:  14
+df counter: 0
+#+end_example
+
+* Adam gradient method
+
+This last example implements the [[https://arxiv.org/abs/1412.6980][Adam gradient method]]. It also use
+[[https://github.com/vincent-picaud/OptionalArgument][Optional Arguments]] to define its parameters.
+
+#+begin_src cpp :eval never
+#include "Adam.hpp"
+
+using namespace Optimize;
+
+void
+Rosenbrock(const std::valarray<double>& x,
+           double* f,
+           std::valarray<double>* df,
+           double c)
+{
+  assert(x.size() == 2);
+  assert(df == nullptr or df->size() == 2);
+
+  if (f)
+  {
+    ,*f = (1 - x[0]) * (1 - x[0]) +
+         c * (x[1] - x[0] * x[0]) * (x[1] - x[0] * x[0]);
+  }
+
+  if (df)
+  {
+    (*df)[0] = 2 * (-1 + x[0] + 2 * c * x[0] * x[0] * x[0] -
+                    2 * c * x[0] * x[1]);
+    (*df)[1] = 2 * c * (x[1] - x[0] * x[0]);
+  }
+}
+
+int
+main()
+{
+  Differentiable_Function f(Rosenbrock, 10);
+
+  std::valarray<double> x(2, 2);
+  double y;
+  std::valarray<double> grad(2);
+
+  f.initialize_counter();
+
+  bool has_converged = Adam_optimize(
+      f,
+      x,
+      y,
+      grad,
+
+      _Adam_beta_1_         = 0.6,
+      _Adam_beta_2_         = 0.6,
+      _Adam_alpha_schedule_ = [](const size_t t) -> double {
+        return 1 / sqrt(t);
+      },
+      _absolute_epsilon_ = 0.01,
+      _verbose_          = true);
+
+  std::cerr << "has converged: " << std::boolalpha
+            << has_converged << std::endl;
+  std::cerr << "f counter:  " << f.f_counter() << std::endl;
+  std::cerr << "df counter: " << f.df_counter()
+            << std::endl;
+}
+#+end_src
+
+prints:
+
+#+begin_example
+   1              41     166.8652151
+   11    0.2439827225     6.328434411
+   21   0.09116840808      2.78026373
+   31   0.05612056479     2.428380552
+   41    0.1368252374     5.609748125
+   51   0.01053314125     0.717170352
+   61   0.05312840451     3.246977765
+   71   0.02220712686      2.08327324
+   81  0.004002723374    0.8795538422
+   91    0.0471959481     3.173767534
+   97 2.253224098e-05  0.006729458161
+has converged: true
+f counter:  11
+df counter: 97
+#+end_example
+
+* Annex: differentiable function code
+
+#+begin_src cpp :eval never 
+template <typename DOMAIN_TYPE,
+          typename CODOMAIN_TYPE,
+          typename DIFFERENTIAL_TYPE>
+class Differentiable_Function
+{
+ public:
+  using function_type =
+      Function<DOMAIN_TYPE, CODOMAIN_TYPE>;
+  using domain_type = typename function_type::domain_type;
+  using codomain_type =
+      typename function_type::codomain_type;
+  using differential_type = DIFFERENTIAL_TYPE;
+
+  struct Diff_Interface : public function_type::Interface
+  {
+    virtual void f_df(
+        const domain_type& x,
+        codomain_type& y,
+        differential_type& differential) const   = 0;
+    virtual void df(const domain_type& x,
+                    differential_type& df) const = 0;
+  };
+
+ protected:
+  using pimpl_type = std::shared_ptr<const Diff_Interface>;
+
+ public:
+  pimpl_type _pimpl;
+  std::shared_ptr<size_t> _f_counter;
+  std::shared_ptr<size_t> _df_counter;
+
+ public:
+  operator function_type() const
+  {
+    return {_pimpl, _f_counter};
+  }
+
+  Differentiable_Function(
+      pimpl_type&& pimpl,
+      std::shared_ptr<size_t> f_counter  = {},
+      std::shared_ptr<size_t> df_counter = {})
+      : _pimpl(std::move(pimpl)),
+        _f_counter{f_counter},
+        _df_counter{df_counter}
+  {
+  }
+  // lambda(domain,codomain*,differential*)
+  template <typename F,
+            std::enable_if_t<std::is_invocable_r_v<
+                void,
+                std::decay_t<F>,
+                DOMAIN_TYPE,
+                CODOMAIN_TYPE*,
+                DIFFERENTIAL_TYPE*>>* = nullptr>
+  Differentiable_Function(F&& f)
+  {
+    struct Impl final : public Diff_Interface
+    {
+      std::decay_t<F> _f;
+
+      Impl(F&& f) : _f(std::forward<F>(f)) {}
+
+      void
+      f(const DOMAIN_TYPE& x, CODOMAIN_TYPE& y) const
+      {
+        _f(x, &y, nullptr);
+      }
+      void
+      f_df(const DOMAIN_TYPE& x,
+           CODOMAIN_TYPE& y,
+           DIFFERENTIAL_TYPE& df) const
+      {
+        _f(x, &y, &df);
+      }
+      void
+      df(const DOMAIN_TYPE& x, DIFFERENTIAL_TYPE& df) const
+      {
+        _f(x, nullptr, &df);
+      }
+    };
+    _pimpl = std::make_shared<Impl>(std::forward<F>(f));
+  }
+  // void foo(const std::vector<double>& x, double* f, std::vector<double>* df, extra_args...)
+  template <typename... EXTRA_ARGS>
+  Differentiable_Function(
+      void(f)(const DOMAIN_TYPE&,
+              CODOMAIN_TYPE*,
+              DIFFERENTIAL_TYPE*,
+              EXTRA_ARGS...),
+      const Identity_t<EXTRA_ARGS>&... args)
+      : Differentiable_Function{[=](const DOMAIN_TYPE& x,
+                                    CODOMAIN_TYPE* y,
+                                    DIFFERENTIAL_TYPE* df) {
+          f(x, y, df, args...);
+        }}
+  {
+  }
+
+  function_type
+  as_function() const
+  {
+    return static_cast<function_type>(*this);
+  }
+
+  void
+  f(const domain_type& x, codomain_type& y) const
+  {
+    if (_f_counter) ++(*_f_counter);
+
+    (*_pimpl).f(x, y);
+  }
+
+  void
+  f_df(const domain_type& x,
+       codomain_type& y,
+       differential_type& df) const
+  {
+    if (_f_counter) ++(*_f_counter);
+    if (_df_counter) ++(*_df_counter);
+
+    (*_pimpl).f_df(x, y, df);
+  }
+
+  void
+  df(const domain_type& x, differential_type& df) const
+  {
+    if (_df_counter) ++(*_df_counter);
+
+    (*_pimpl).df(x, df);
+  }
+
+  void
+  initialize_counter()
+  {
+    _f_counter  = std::make_shared<size_t>(0);
+    _df_counter = std::make_shared<size_t>(0);
+  }
+
+  size_t
+  f_counter() const
+  {
+    assert(_f_counter);
+    return *_f_counter;
+  }
+
+  size_t
+  df_counter() const
+  {
+    assert(_df_counter);
+    return *_df_counter;
+  }
+};
+#+end_src
