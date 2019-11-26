@@ -153,16 +153,14 @@ namespace Optimize
   class Differentiable_Function
   {
    public:
-    using objective_function_type =
+    using function_type =
         Function<DOMAIN_TYPE, CODOMAIN_TYPE>;
-    using domain_type =
-        typename objective_function_type::domain_type;
+    using domain_type = typename function_type::domain_type;
     using codomain_type =
-        typename objective_function_type::codomain_type;
+        typename function_type::codomain_type;
     using differential_type = DIFFERENTIAL_TYPE;
 
-    struct Diff_Interface
-        : public objective_function_type::Interface
+    struct Diff_Interface : public function_type::Interface
     {
       virtual void f_df(
           const domain_type& x,
@@ -182,6 +180,11 @@ namespace Optimize
     std::shared_ptr<size_t> _df_counter;
 
    public:
+    operator function_type() const
+    {
+      return {_pimpl, _f_counter};
+    }
+
     Differentiable_Function(
         pimpl_type&& pimpl,
         std::shared_ptr<size_t> f_counter  = {},
@@ -245,10 +248,10 @@ namespace Optimize
     {
     }
 
-    objective_function_type
+    function_type
     as_function() const
     {
-      return objective_function_type(_pimpl, _f_counter);
+      return static_cast<function_type>(*this);
     }
 
     void
