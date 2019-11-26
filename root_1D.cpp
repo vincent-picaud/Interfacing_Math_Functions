@@ -3,8 +3,6 @@
 #include <iomanip>
 #include <iostream>
 
-using namespace Optimize;
-
 template <typename T>
 void
 square_root(const T& x, T* f, T* df, T c)
@@ -23,15 +21,11 @@ template <typename T>
 void
 show_iteration(size_t iter, T x, T f)
 {
-  constexpr auto max_digits =
-      std::numeric_limits<T>::max_digits10;
+  constexpr auto max_digits = std::numeric_limits<T>::max_digits10;
 
-  std::cerr << std::setw(4) << iter
-            << " x = " << std::setw(max_digits + 5)
-            << std::setprecision(max_digits) << x
-            << " f = " << std::setw(max_digits + 5)
-            << std::setprecision(max_digits) << f
-            << std::endl;
+  std::cerr << std::setw(4) << iter << " x = " << std::setw(max_digits + 5)
+            << std::setprecision(max_digits) << x << " f = " << std::setw(max_digits + 5)
+            << std::setprecision(max_digits) << f << std::endl;
 }
 
 template <typename T>
@@ -64,10 +58,7 @@ Newton(const Differentiable_Function<T, T, T>& f_obj,
 
 template <typename T>
 bool
-Steffensen(const Function<T, T>& f_obj,
-           T& x,
-           double epsilon  = 1e-10,
-           size_t max_iter = 20)
+Steffensen(const Function<T, T>& f_obj, T& x, double epsilon = 1e-10, size_t max_iter = 20)
 {
   T f, g;
 
@@ -107,11 +98,9 @@ main()
 
   has_converged = Newton(f, x);
 
-  std::cerr << "has converged: " << std::boolalpha
-            << has_converged << std::endl;
+  std::cerr << "has converged: " << std::boolalpha << has_converged << std::endl;
   std::cerr << "f counter:  " << f.f_counter() << std::endl;
-  std::cerr << "df counter: " << f.df_counter()
-            << std::endl;
+  std::cerr << "df counter: " << f.df_counter() << std::endl;
 
   ////////////////
 
@@ -121,9 +110,7 @@ main()
 
   has_converged = Steffensen(f.as_function(), x);
 
-  std::cerr << "has converged: " << std::boolalpha
-            << has_converged << std::endl;
+  std::cerr << "has converged: " << std::boolalpha << has_converged << std::endl;
   std::cerr << "f counter:  " << f.f_counter() << std::endl;
-  std::cerr << "df counter: " << f.df_counter()
-            << std::endl;
+  std::cerr << "df counter: " << f.df_counter() << std::endl;
 }

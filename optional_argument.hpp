@@ -10,8 +10,7 @@
 #include <tuple>
 #include <type_traits>
 
-namespace OptionalArgument
-{
+
   //////////////// Count_Type_Occurrence ////////////////
   //
   template <typename T, typename... Ts>
@@ -159,8 +158,9 @@ namespace OptionalArgument
         // ...ditto...
         //
         std::get<std::conditional_t<occurence_count_maybe_optional_by_value,
-                                    std::optional<USER_OPTION>, std::optional<USER_OPTION>&>>(
-            options) = std::forward<decltype(user_option)>(user_option);
+                                    std::optional<USER_OPTION>,
+                                    std::optional<USER_OPTION>&>>(options) =
+            std::forward<decltype(user_option)>(user_option);
       }
     };
 
@@ -363,4 +363,3 @@ namespace OptionalArgument
     using argument_syntactic_sugar = Argument_Syntactic_Sugar<Named_Std_Function>;
   };
 
-}  // namespace OptionalArgument

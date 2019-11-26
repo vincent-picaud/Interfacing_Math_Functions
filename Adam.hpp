@@ -19,22 +19,22 @@ namespace Optimize
   // By example logistic regression αt <- α0/sqrt(t)
   //
   using Adam_Alpha_Schedule =
-      OptionalArgument::Named_Std_Function<struct Adam_Alpha_Schedule_Tag, double, const size_t>;
+      Named_Std_Function<struct Adam_Alpha_Schedule_Tag, double, const size_t>;
   static constexpr auto _Adam_alpha_schedule_ =
       typename Adam_Alpha_Schedule::argument_syntactic_sugar();
   static constexpr auto Adam_alpha_constant_schedule = [](const double alpha) {
     return [alpha](const size_t) -> double { return alpha; };
   };
 
-  using Adam_Beta_1 = OptionalArgument::
+  using Adam_Beta_1 =
       Named_Assert_Type<struct Adam_Beta_1_Tag, Assert_In_01_Strict<double>, double>;
   static constexpr auto _Adam_beta_1_ = typename Adam_Beta_1::argument_syntactic_sugar();
 
-  using Adam_Beta_2 = OptionalArgument::
+  using Adam_Beta_2 =
       Named_Assert_Type<struct Adam_Beta_2_Tag, Assert_In_01_Strict<double>, double>;
   static constexpr auto _Adam_beta_2_ = typename Adam_Beta_2::argument_syntactic_sugar();
 
-  using Adam_Internal_Epsilon = OptionalArgument::
+  using Adam_Internal_Epsilon =
       Named_Assert_Type<struct Adam_Internal_Epsilon_Tag, Assert_In_01_Strict<double>, double>;
   static constexpr auto _Adam_internal_epsilon_ =
       typename Adam_Internal_Epsilon::argument_syntactic_sugar();
