@@ -116,6 +116,14 @@ namespace Optimize
 
       (*_pimpl).f(x, y);
     }
+    
+    codomain_type
+    operator()(const domain_type& x) const
+    {
+      codomain_type y;
+      f(x, y);
+      return y;
+    };
 
     void
     initialize_counter()
@@ -261,6 +269,14 @@ namespace Optimize
 
       (*_pimpl).f(x, y);
     }
+
+    codomain_type
+    operator()(const domain_type& x) const
+    {
+      codomain_type y;
+      f(x, y);
+      return y;
+    };
 
     void
     f_df(const domain_type& x,
