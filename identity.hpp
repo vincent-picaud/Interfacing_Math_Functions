@@ -11,4 +11,4 @@ namespace Optimize
   template <typename T>
   using Identity_t = typename Identity<T>::type;
 
-}  // namespace Optimize
+}  
