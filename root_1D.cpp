@@ -35,7 +35,7 @@ Newton(const Differentiable_Function<T, T, T>& f_obj,
        double epsilon  = 1e-10,
        size_t max_iter = 20)
 {
-  T f, df;
+  T f, df; // assumed to be default constructible
 
   bool has_converged = false;
 
@@ -60,7 +60,7 @@ template <typename T>
 bool
 Steffensen(const Function<T, T>& f_obj, T& x, double epsilon = 1e-10, size_t max_iter = 20)
 {
-  T f, g;
+  T f, g; // assumed to be default constructible
 
   bool has_converged = false;
 
